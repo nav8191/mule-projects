@@ -1,0 +1,71 @@
+#%RAML 0.8
+title: get-customer-details
+version: 1.0
+#baseUri: https://get-customer-details
+baseUri: https://mocksvc.mulesoft.com/mocks/ba99b353-c00e-4478-b53e-f6b272301354
+
+schemas: 
+- customer-schema: |
+    {
+      "$schema": "http://json-schema.org/draft=04/schema",
+      "type": "object",
+      "description": "Details of customer",
+      "properties": {
+        "customer": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "age": {
+            "type": "integer"
+          },
+          "gender": {
+            "type": "string",
+            "enum": ["M","F"]
+          }
+        }
+        }
+      }
+    }
+    
+/customer/{id}/details:
+  displayName: Customer Details
+  description: Details of customer
+  uriParameters: 
+    id: 
+      displayName: customer id
+      description: unique id of customer
+      type: string
+      required: true
+      minLength: 1
+      maxLength: 10
+  get:
+    description: Gets customer details
+    headers: 
+      X-Locale:
+        type: string
+        required: true
+    responses: 
+      200:
+        description: success
+        body: 
+          application/json:
+            example: |
+              {
+                "customer": {
+                  "name": "Navpreet",
+                  "age": 26,
+                  "gender": "M"
+                }
+              }
+      400:
+        description: Bad request
+      404:
+        description: Record Not Found
+      500:
+        description: Internal server error
+    
+    
+    
+    

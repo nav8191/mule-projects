@@ -1,0 +1,102 @@
+#%RAML 0.8
+title: customer-details
+version: 1.0
+#baseUri: https:/customer-details
+baseUri: https://mocksvc.mulesoft.com/mocks/ba99b353-c00e-4478-b53e-f6b272301354
+
+schemas: 
+- customer-schema: |
+    {
+      "$schema": "http://json-schema.org/draft=04/schema",
+      "type": "object",
+      "description": "Details of customer",
+      "properties": {
+        "customer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          }
+          "name": {
+            "type": "string"
+          },
+          "age": {
+            "type": "integer"
+          },
+          "gender": {
+            "type": "string",
+            "enum": ["M","F"]
+          }
+        }
+        }
+      }
+    }
+    
+/customer/{id}/details:
+  displayName: Customer Details
+  description: Details of customer
+  uriParameters: 
+    id: 
+      displayName: customer id
+      description: unique id of customer
+      type: string
+      required: true
+      minLength: 1
+      maxLength: 10
+  get:
+    description: Gets customer details
+    headers: 
+      CorrelationID:
+        type: string
+        required: true
+        example: 782hdsfjk93893-721dsadas2842-84df3c49320
+      DeviceID:
+        type: string
+        required: true
+        example: 721dsadas2842-84df3c49320-845385hfdsjk0923
+    responses: 
+      200:
+        description: success
+        body: 
+          application/json:
+            example: |
+              {
+                "customer": {
+                  "customerId" : "372492349023",
+                  "personalDetails" : {
+                    "id": 1,
+                    "name": "Navpreet",
+                    "age": 26,
+                    "gender": "Male",
+                    "maritalStatus" : "unmarried"
+                  },
+                  "correspondanceDetails" : {
+                    "address1" : "House Number 123",
+                    "address2" : "Area XYZ",
+                    "city" : "Pune",
+                    "state" : "MH"
+                  },
+                  "accountDetails" : [
+                    {
+                      "accountNumber" : "728472398430",
+                      "accountType" : "Savings",
+                      "accountStatus" : "Active"
+                    },
+                    {
+                      "accountNumber" : "5435345",
+                      "accountType" : "Loan",
+                      "accountStatus" : "Closed"
+                    }
+                  ]
+                }
+              }
+      400:
+        description: Bad request
+      404:
+        description: Record Not Found
+      500:
+        description: Internal server error
+    
+    
+    
+    

@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:jms="http://www.mulesoft.org/schema/mule/jms" 
+	xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw"
+	xmlns:json="http://www.mulesoft.org/schema/mule/json"
+    xmlns:http="http://www.mulesoft.org/schema/mule/http"
+    xmlns="http://www.mulesoft.org/schema/mule/core"
+    xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit"
+    xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+    xmlns:spring="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/3.7/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/3.7/mule-http.xsd
+http://www.mulesoft.org/schema/mule/apikit http://www.mulesoft.org/schema/mule/apikit/current/mule-apikit.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/3.7/mule-json.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+    <http:listener-config name="api-httpListenerConfig" host="0.0.0.0" port="8081" doc:name="HTTP Listener Configuration"/>
+    <apikit:config name="api-config" raml="api.raml" consoleEnabled="false" doc:name="Router"/>
+    <apikit:config name="Router" raml="api.raml" consoleEnabled="true" consolePath="console" doc:name="Router"/>
+    <vm:connector name="VM" validateConnections="true" doc:name="VM"/>
+    <flow name="api-main">
+        <http:listener config-ref="api-httpListenerConfig" path="/api/*" doc:name="HTTP"/>
+        <set-variable variableName="correlationId" value="#[message.inboundProperties.'CorrelationID']" doc:name="Set Correlation ID"/>
+        <set-variable variableName="deviceId" value="#[message.inboundProperties.'DeviceID']" doc:name="Set Device ID"/>
+        <apikit:router config-ref="api-config" doc:name="APIkit Router"/>
+        <exception-strategy ref="api-apiKitGlobalExceptionMapping" doc:name="Reference Exception Strategy"/>
+    </flow>
+    <flow name="get:/customer/{id}/details:api-config">
+        <logger message="Correlation ID : #[flowVars.correlationId] Device ID : #[flowVars.deviceId] Request Entered Main Flow for customer #[message.inboundProperties.'http.uri.params'.id]" level="INFO" category="com.cms.infologger.request.main" doc:name="Info Logger"/>
+        <flow-ref name="request-transform" doc:name="request-transform"/>
+        <flow-ref name="outbound-call" doc:name="outbound-call"/>
+        <flow-ref name="response-processing" doc:name="response-processing"/>
+        <exception-strategy ref="Application_Exception_Strategy" doc:name="Reference Exception Strategy"/>
+    </flow>
+    <sub-flow name="request-transform">
+        <dw:transform-message metadata:id="b86b308d-b7d4-4134-aac6-a81c415de61c" doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/xml
+%namespace ns0 http://www.w3.org/2003/05/soap-envelope/
+%namespace ns1 https://www.mydomain.com/customers
+---
+{
+	ns0#Envelope: {
+		ns0#Body: {
+			ns1#GetDetails: {
+				ns1#Customer: flowVars.id
+			}
+		}
+	}
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <logger message="Correlation ID : #[flowVars.correlationId] Device ID : #[flowVars.deviceId] Request XML prepared" level="INFO" category="com.cms.infologger.request.dataweave" doc:name="Info Logger"/>
+        <logger message="Correlation ID : #[flowVars.correlationId] Device ID : #[flowVars.deviceId] Request XML prepared Payload : #[payload]" level="DEBUG" category="com.cms.debuglogger.request.dataweave" doc:name="Debug Logger"/>
+    </sub-flow>
+    <sub-flow name="outbound-call">
+        <vm:outbound-endpoint exchange-pattern="request-response" path="requestQueue" connector-ref="VM" doc:name="VM"/>
+        <byte-array-to-string-transformer doc:name="Byte Array to String"/>
+    </sub-flow>
+    <sub-flow name="response-processing">
+        <choice doc:name="Check Transaction Status">
+            <when expression="#[xpath3('//success') == 'true']">
+                <flow-ref name="success-response-transform" doc:name="success-response-transform"/>
+                <set-property propertyName="http.status" value="200" doc:name="Set HHTP status 200"/>
+            </when>
+            <otherwise>
+                <set-payload value="{ &quot;message&quot;: #[xpath3('//errorDescription')] }" doc:name="Set Error Payload"/>
+                <set-property propertyName="http.status" value="500" doc:name="Set HTTP Status 500"/>
+            </otherwise>
+        </choice>
+    </sub-flow>
+    <sub-flow name="success-response-transform">
+        <dw:transform-message metadata:id="844882a6-883f-47ca-bfa5-786e3d610809" doc:name="Transform Message">
+            <dw:input-payload mimeType="application/xml"/>
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+%namespace ns0 http://www.w3.org/2003/05/soap-envelope/
+%namespace ns1 http://www.example.org/customerManagementSystem
+---
+{
+	customer: {
+		customerId: payload.ns0#Envelope.ns0#Body.ns1#CustomerDetails.customer.customerId,
+		personalDetails: {
+			id: payload.ns0#Envelope.ns0#Body.ns1#CustomerDetails.customer.personalDetails.id,
+			name: payload.ns0#Envelope.ns0#Body.ns1#CustomerDetails.customer.personalDetails.name,
+			age: payload.ns0#Envelope.ns0#Body.ns1#CustomerDetails.customer.personalDetails.age,
+			gender: payload.ns0#Envelope.ns0#Body.ns1#CustomerDetails.customer.personalDetails.gender,
+			maritalStatus: payload.ns0#Envelope.ns0#Body.ns1#CustomerDetails.customer.personalDetails.maritalStatus
+		},
+		correspondanceDetails: {
+			address1: payload.ns0#Envelope.ns0#Body.ns1#CustomerDetails.customer.correspondanceDetails.address1,
+			address2: payload.ns0#Envelope.ns0#Body.ns1#CustomerDetails.customer.correspondanceDetails.address2,
+			city: payload.ns0#Envelope.ns0#Body.ns1#CustomerDetails.customer.correspondanceDetails.city,
+			state: payload.ns0#Envelope.ns0#Body.ns1#CustomerDetails.customer.correspondanceDetails.state
+		},
+		accountDetails: [] when payload.ns0#Envelope.ns0#Body.ns1#CustomerDetails.customer.accountDetails == null otherwise payload.ns0#Envelope.ns0#Body.ns1#CustomerDetails.customer.accountDetails.*element map ((element , indexOfElement) -> {
+			accountNumber: element.accountNumber,
+			accountType: element.accountType,
+			accountStatus: element.accountStatus
+		})
+	}
+}]]></dw:set-payload>
+        </dw:transform-message>
+    </sub-flow>
+    <flow name="api-console">
+        <http:listener config-ref="api-httpListenerConfig" path="/console/*" doc:name="HTTP"/>
+        <apikit:console config-ref="api-config" doc:name="APIkit Console"/>
+    </flow>
+    <apikit:mapping-exception-strategy name="api-apiKitGlobalExceptionMapping">
+        <apikit:mapping statusCode="404">
+            <apikit:exception value="org.mule.module.apikit.exception.NotFoundException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Resource not found&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="405">
+            <apikit:exception value="org.mule.module.apikit.exception.MethodNotAllowedException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Method not allowed&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="415">
+            <apikit:exception value="org.mule.module.apikit.exception.UnsupportedMediaTypeException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Unsupported media type&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="406">
+            <apikit:exception value="org.mule.module.apikit.exception.NotAcceptableException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Not acceptable&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="400">
+            <apikit:exception value="org.mule.module.apikit.exception.BadRequestException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Bad request&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+    </apikit:mapping-exception-strategy>
+    <choice-exception-strategy name="Application_Exception_Strategy">
+        <catch-exception-strategy when="*SAXParseException" doc:name="SAX Parse Exception Strategy">
+            <set-payload value="{ &quot;message&quot;: &quot;#[exception.cause.message]&quot; }" doc:name="Set Error Payload"/>
+            <set-property propertyName="http.status" value="500" doc:name="Set HTTP Status 500"/>
+        </catch-exception-strategy>
+        <catch-exception-strategy when="java.lang.Exception" doc:name="Catch Exception Strategy">
+            <set-payload value="{ &quot;message&quot;: &quot;#[exception.cause.message]&quot; }" doc:name="Set Error Payload"/>
+            <set-property propertyName="http.status" value="500" doc:name="Set HTTP Status 500"/>
+        </catch-exception-strategy>
+    </choice-exception-strategy>
+</mule>
